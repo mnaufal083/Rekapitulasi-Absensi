@@ -20,6 +20,7 @@ from flask import Flask, render_template, request, jsonify, send_file
 import pandas as pd
 
 from extractor import ekstrak_pdf
+from rekap_resmi import tulis_sheet_rekap_resmi
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -172,9 +173,10 @@ def _proses_job():
 
                 if STATE["hasil_ringkasan"]:
                     df_ringkasan = pd.DataFrame(STATE["hasil_ringkasan"])
-                    df_ringkasan.to_excel(writer, index=False, sheet_name="Ringkasan Kehadiran")
+                    kolom_tampil = [c for c in df_ringkasan.columns if not c.startswith("_")]
+                    df_ringkasan[kolom_tampil].to_excel(writer, index=False, sheet_name="Ringkasan Kehadiran")
                     ws2 = writer.sheets["Ringkasan Kehadiran"]
-                    for i, col in enumerate(df_ringkasan.columns, start=1):
+                    for i, col in enumerate(kolom_tampil, start=1):
                         max_len = max([len(str(col))] + [len(str(v)) for v in df_ringkasan[col].astype(str).tolist()[:2000]])
                         huruf = chr(64 + i) if i <= 26 else "A" + chr(64 + i - 26)
                         ws2.column_dimensions[huruf].width = min(max_len + 4, 45)
@@ -182,6 +184,11 @@ def _proses_job():
                 if STATE["log"]:
                     df_log = pd.DataFrame(STATE["log"])
                     df_log.to_excel(writer, index=False, sheet_name="Log Kesalahan")
+
+                # sheet tambahan: format resmi instansi (satu sheet per Bidang)
+                if STATE["hasil_ringkasan"]:
+                    semua_tanggal = [r.get("Tanggal") for r in STATE["hasil_rows"]]
+                    tulis_sheet_rekap_resmi(writer.book, STATE["hasil_ringkasan"], semua_tanggal)
 
             STATE["output_path"] = path_output
 

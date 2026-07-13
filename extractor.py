@@ -83,7 +83,7 @@ def _adalah_baris_ringkasan(row):
     return "TERLAMBAT" in _bersih(row[0]).upper() and "HARI" in _bersih(row[0]).upper()
 
 
-def _parse_ringkasan(teks, nama, nip, nrp, gol, sumber_file):
+def _parse_ringkasan(teks, nama, nip, nrp, gol, sub_unit, jabatan, sumber_file):
     hasil = {label.strip().title(): int(jumlah) for label, jumlah in RINGKASAN_REGEX.findall(teks)}
     return {
         "Nama": nama or "-",
@@ -103,6 +103,10 @@ def _parse_ringkasan(teks, nama, nip, nrp, gol, sumber_file):
         "Total Cuti (Hari)": hasil.get("Total Cuti", ""),
         "Total Hari Kerja": hasil.get("Total Hari Kerja", ""),
         "Sumber File": sumber_file,
+        # kolom tersembunyi (diawali "_"), dipakai untuk menebak kode Bidang
+        # pada sheet rekap resmi - tidak ditampilkan di sheet "Ringkasan Kehadiran"
+        "_sub_unit": sub_unit or "",
+        "_jabatan": jabatan or "",
     }
 
 
@@ -136,7 +140,8 @@ def ekstrak_pdf(path_pdf, nama_file):
                             continue
                         if _adalah_baris_ringkasan(row):
                             ringkasan_list.append(_parse_ringkasan(
-                                _bersih(row[0]), cur["nama"], cur["nip"], cur["nrp"], cur["gol"], nama_file
+                                _bersih(row[0]), cur["nama"], cur["nip"], cur["nrp"], cur["gol"],
+                                cur["subunit"], cur["jabatan"], nama_file
                             ))
                             continue
 
