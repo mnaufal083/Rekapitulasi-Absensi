@@ -59,6 +59,7 @@ STATE = {
     "log": [],                 # list of {file, pesan}
     "hasil_rows": [],          # list of dict baris absensi harian
     "hasil_ringkasan": [],     # list of dict rekap statistik per pegawai
+    "bidang_override": "",     # nama Bidang manual (opsional) untuk sheet rekap resmi
     "output_path": None,
     "mulai": None,
     "selesai": None,
@@ -77,6 +78,7 @@ def reset_state():
             "log": [],
             "hasil_rows": [],
             "hasil_ringkasan": [],
+            "bidang_override": "",
             "output_path": None,
             "mulai": None,
             "selesai": None,
@@ -185,10 +187,13 @@ def _proses_job():
                     df_log = pd.DataFrame(STATE["log"])
                     df_log.to_excel(writer, index=False, sheet_name="Log Kesalahan")
 
-                # sheet tambahan: format resmi instansi (satu sheet per Bidang)
+                # sheet tambahan: format resmi instansi
                 if STATE["hasil_ringkasan"]:
                     semua_tanggal = [r.get("Tanggal") for r in STATE["hasil_rows"]]
-                    tulis_sheet_rekap_resmi(writer.book, STATE["hasil_ringkasan"], semua_tanggal)
+                    tulis_sheet_rekap_resmi(
+                        writer.book, STATE["hasil_ringkasan"], semua_tanggal,
+                        nama_bidang=STATE.get("bidang_override", ""),
+                    )
 
             STATE["output_path"] = path_output
 
@@ -201,6 +206,8 @@ def process():
     with LOCK:
         if STATE["status"] == "processing":
             return jsonify({"ok": False, "pesan": "Proses sedang berjalan"}), 409
+        data = request.get_json(silent=True) or {}
+        STATE["bidang_override"] = (data.get("bidang_override") or "").strip()
     t = threading.Thread(target=_proses_job, daemon=True)
     t.start()
     return jsonify({"ok": True})

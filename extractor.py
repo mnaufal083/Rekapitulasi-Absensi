@@ -79,12 +79,39 @@ def _adalah_baris_jabatan(row):
     return _bersih(row[0]).upper().startswith("JABATAN")
 
 
-def _adalah_baris_ringkasan(row):
-    return "TERLAMBAT" in _bersih(row[0]).upper() and "HARI" in _bersih(row[0]).upper()
+def _adalah_baris_statistik(row):
+    """Baris statistik/ringkasan: hanya kolom pertama berisi teks berpola
+    'LABEL : angka Hari' (bisa berisi beberapa pasangan sekaligus, dan bisa
+    muncul lebih dari satu baris per pegawai - misalnya baris utama berisi
+    Terlambat/Alpha/dst, lalu baris tambahan berisi rincian jenis Cuti)."""
+    teks = _bersih(row[0])
+    if not RINGKASAN_REGEX.search(teks):
+        return False
+    if len(row) > COL_NAMA and _bersih(row[COL_NAMA]):
+        return False  # baris identitas pegawai baru, bukan baris statistik
+    return True
 
 
-def _parse_ringkasan(teks, nama, nip, nrp, gol, sub_unit, jabatan, sumber_file):
-    hasil = {label.strip().title(): int(jumlah) for label, jumlah in RINGKASAN_REGEX.findall(teks)}
+def _bangun_ringkasan(hasil, nama, nip, nrp, gol, sub_unit, jabatan, sumber_file):
+    """hasil: dict {LabelTitleCase: angka} hasil akumulasi seluruh baris
+    statistik milik satu pegawai (bisa dari beberapa baris terpisah)."""
+    FIELD_TETAP = {
+        "Terlambat", "Pulang Cepat", "Tidak Absen Datang", "Tidak Absen Pulang",
+        "Izin", "Alpha", "Sakit", "Dinas Luar", "Lepas Piket", "Tugas Belajar",
+        "Total Cuti", "Total Hari Kerja",
+    }
+
+    # rincian cuti: semua label berawalan "Cuti" selain "Total Cuti"
+    rincian_cuti = [
+        f"{label.upper()} : {jumlah} Hari"
+        for label, jumlah in hasil.items()
+        if label.upper().startswith("CUTI") and label != "Total Cuti"
+    ]
+    teks_cuti = ", ".join(rincian_cuti)
+    if not teks_cuti and hasil.get("Total Cuti"):
+        # tidak ada rincian jenis, tapi total cuti > 0 -> tetap tampilkan totalnya
+        teks_cuti = f"CUTI : {hasil.get('Total Cuti')} Hari"
+
     return {
         "Nama": nama or "-",
         "NIP": nip or "-",
@@ -101,12 +128,14 @@ def _parse_ringkasan(teks, nama, nip, nrp, gol, sub_unit, jabatan, sumber_file):
         "Lepas Piket (Hari)": hasil.get("Lepas Piket", ""),
         "Tugas Belajar (Hari)": hasil.get("Tugas Belajar", ""),
         "Total Cuti (Hari)": hasil.get("Total Cuti", ""),
+        "Rincian Cuti": teks_cuti,
         "Total Hari Kerja": hasil.get("Total Hari Kerja", ""),
         "Sumber File": sumber_file,
-        # kolom tersembunyi (diawali "_"), dipakai untuk menebak kode Bidang
-        # pada sheet rekap resmi - tidak ditampilkan di sheet "Ringkasan Kehadiran"
+        # kolom tersembunyi (diawali "_"), dipakai untuk konteks tambahan bila diperlukan
         "_sub_unit": sub_unit or "",
         "_jabatan": jabatan or "",
+        # label lain di luar daftar tetap (mis. jenis cuti langka) tetap disimpan mentah
+        "_hasil_mentah": dict(hasil),
     }
 
 
@@ -116,7 +145,17 @@ def ekstrak_pdf(path_pdf, nama_file):
     ditemukan_tabel = False
 
     # state yang di-"bawa turun" karena pada baris ke-2 dst NO/Nama/NIP/dst dikosongkan
-    cur = {"no": "", "nama": "", "nip": "", "nrp": "", "gol": "", "subunit": "", "jabatan": ""}
+    cur = {"no": "", "nama": "", "nip": "", "nrp": "", "gol": "", "subunit": "", "jabatan": "", "stat_acc": {}}
+
+    def flush_ringkasan():
+        """Selesaikan akumulasi statistik pegawai saat ini (jika ada) dan
+        masukkan ke ringkasan_list, sebelum pindah ke pegawai berikutnya."""
+        if cur["nama"] or cur["nip"]:
+            ringkasan_list.append(_bangun_ringkasan(
+                cur["stat_acc"], cur["nama"], cur["nip"], cur["nrp"], cur["gol"],
+                cur["subunit"], cur["jabatan"], nama_file
+            ))
+        cur["stat_acc"] = {}
 
     try:
         with pdfplumber.open(path_pdf) as pdf:
@@ -138,21 +177,23 @@ def ekstrak_pdf(path_pdf, nama_file):
                         if _adalah_baris_jabatan(row):
                             cur["jabatan"] = _bersih(row[0])
                             continue
-                        if _adalah_baris_ringkasan(row):
-                            ringkasan_list.append(_parse_ringkasan(
-                                _bersih(row[0]), cur["nama"], cur["nip"], cur["nrp"], cur["gol"],
-                                cur["subunit"], cur["jabatan"], nama_file
-                            ))
+                        if _adalah_baris_statistik(row):
+                            teks = _bersih(row[0])
+                            pasangan = {label.strip().title(): int(jumlah) for label, jumlah in RINGKASAN_REGEX.findall(teks)}
+                            cur["stat_acc"].update(pasangan)
                             continue
 
                         tanggal_raw = _bersih(row[COL_TANGGAL])
                         if not TANGGAL_REGEX.match(tanggal_raw):
                             continue  # baris tidak dikenali, lewati dengan aman
 
-                        # update state kalau kolom identitas terisi (baris pertama pegawai)
+                        # update state kalau kolom identitas terisi (baris pertama pegawai baru)
                         if _bersih(row[COL_NAMA]):
+                            nama_baru = _bersih(row[COL_NAMA])
+                            if cur["nama"] and cur["nama"] != nama_baru:
+                                flush_ringkasan()  # tutup dulu rekap pegawai sebelumnya
                             cur["no"] = _bersih(row[COL_NO])
-                            cur["nama"] = _bersih(row[COL_NAMA])
+                            cur["nama"] = nama_baru
                             cur["nip"] = _bersih(row[COL_NIP])
                             cur["nrp"] = _bersih(row[COL_NRP])
                             cur["gol"] = _bersih(row[COL_GOL])
@@ -183,6 +224,8 @@ def ekstrak_pdf(path_pdf, nama_file):
                             "Keterangan": keterangan,
                             "Sumber File": nama_file,
                         })
+
+            flush_ringkasan()  # selesaikan rekap pegawai terakhir di file ini
 
             if not ditemukan_tabel:
                 return [], [], "Struktur tabel tidak dikenali (header 'NO./NAMA PEGAWAI' tidak ditemukan) - kemungkinan format PDF berbeda"

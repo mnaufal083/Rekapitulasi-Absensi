@@ -10,6 +10,7 @@
   const btnProses = document.getElementById("btnProses");
   const btnUnduh = document.getElementById("btnUnduh");
   const btnReset = document.getElementById("btnReset");
+  const inputBidang = document.getElementById("inputBidang");
   const progressWrap = document.getElementById("progressWrap");
   const progressFill = document.getElementById("progressFill");
   const progressLabel = document.getElementById("progressLabel");
@@ -108,7 +109,11 @@
       btnProses.textContent = "Memproses…";
       setBadge("busy", "Memproses file…");
 
-      await fetch("/api/process", { method: "POST" });
+      await fetch("/api/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bidang_override: inputBidang.value.trim() }),
+      });
       mulaiPolling();
     } catch (err) {
       alert("Terjadi kesalahan jaringan lokal: " + err);
@@ -200,6 +205,7 @@
     btnReset.hidden = true;
     dataTableBody.innerHTML = '<tr class="empty-row"><td colspan="9">Belum ada data. Unggah file PDF untuk memulai.</td></tr>';
     logList.innerHTML = '<li class="log-empty">Tidak ada catatan kesalahan.</li>';
+    inputBidang.value = "";
     setBadge(null, "Siap");
   });
 })();

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sistem Rekapitulasi Absensi — Daskrimti Kejati Jateng</title>
+<title>Sistem Rekapitulasi Absensi - Daskrimti Kejati Jateng</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -18,7 +18,7 @@
     </div>
     <div class="topbar__text">
       <p class="eyebrow">Kejaksaan Tinggi Jawa Tengah &mdash; Bidang Daskrimti</p>
-      <h1>Sistem Rekapitulasi Absensi Otomatis</h1>
+      <h1>Sistem Rekapitulasi Data Absensi</h1>
       <p class="topbar__sub">Diproses dan disimpan sepenuhnya di perangkat ini &mdash; tidak ada data yang dikirim ke luar.</p>
     </div>
     <div class="topbar__badge" id="statusBadge">
@@ -71,6 +71,16 @@
       <div class="filelist" id="fileListWrap" hidden>
         <p class="filelist__count"><span id="fileCount">0</span> file PDF siap diproses</p>
         <ul class="filelist__ul" id="fileListUl"></ul>
+      </div>
+
+      <div class="bidang-field">
+        <label for="inputBidang">Nama Bidang untuk batch ini <span class="opsional">(opsional)</span></label>
+        <input type="text" id="inputBidang" placeholder="mis. PIDMIL" autocomplete="off">
+        <p class="bidang-field__hint">
+          Jika diisi, seluruh pegawai di batch ini akan dikelompokkan menjadi satu sheet
+          dengan nama Bidang tersebut pada rekap resmi. Kosongkan hanya jika file yang diunggah memang
+          berasal dari beberapa Bidang berbeda sekaligus.
+        </p>
       </div>
 
       <button type="button" class="btn btn--primary btn--block" id="btnProses" disabled>

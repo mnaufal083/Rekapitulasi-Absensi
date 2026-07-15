@@ -213,6 +213,67 @@ body{
 }
 .filelist__ul li:last-child{ border-bottom:none; }
 
+/* ---------------- INPUT BIDANG ---------------- */
+.bidang-field{ margin-top: 16px; }
+.bidang-field label{
+  display:block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-primary-dark);
+  margin-bottom: 6px;
+}
+.bidang-field .opsional{
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+.bidang-field input{
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+.bidang-field input:focus{
+  outline: none;
+  border-color: var(--color-gold);
+  background: var(--color-surface);
+}
+.bidang-field__hint{
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  margin: 6px 2px 0;
+}
+
+/* ---------------- BIDANG FIELD ---------------- */
+.bidang-field{ margin-top: 16px; }
+.bidang-field__label{
+  display:block; font-size:12.5px; font-weight:600;
+  color: var(--color-primary-dark); margin-bottom:6px;
+}
+.bidang-field__opt{ font-weight:400; color: var(--color-text-muted); }
+.bidang-field__input{
+  width:100%; box-sizing:border-box;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+.bidang-field__input:focus{
+  outline:none; border-color: var(--color-gold);
+  background: var(--color-surface);
+}
+.bidang-field__hint{
+  font-size: 11px; color: var(--color-text-muted);
+  margin: 6px 2px 0; line-height:1.5;
+}
+
 /* ---------------- BUTTONS ---------------- */
 .btn{
   font-family: var(--font-body);
