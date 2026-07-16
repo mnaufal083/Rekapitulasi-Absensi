@@ -11,9 +11,9 @@ lalu buka http://127.0.0.1:5000 di browser.
 """
 
 import os
+import hashlib
 import threading
 import time
-import uuid
 from datetime import datetime
 
 from flask import Flask, render_template, request, jsonify, send_file
@@ -49,25 +49,32 @@ def terlalu_besar(e):
         ),
     }), 413
 
-# Status proses disimpan di memori (cukup untuk pemakaian lokal 1 pengguna)
+# Status proses disimpan di memori (cukup untuk pemakaian lokal 1 pengguna).
+# Mendukung unggah & proses BERTAHAP: file baru bisa ditambahkan kapan saja
+# dan diproses menyusul tanpa menghapus hasil yang sudah ada, sampai
+# pengguna menekan "Mulai ulang".
 STATE = {
-    "status": "idle",          # idle | uploading | processing | done | error
-    "total_file": 0,
-    "diproses": 0,
+    "status": "idle",          # idle | processing | done
+    "total_file": 0,           # jumlah total file unik di folder uploads/ (kumulatif)
+    "diproses": 0,             # jumlah file yang sudah dicoba diproses (kumulatif)
     "berhasil": 0,
-    "gagal": 0,
+    "gagal": 0,                # termasuk file gagal dibaca & file/duplikat yang dilewati
     "log": [],                 # list of {file, pesan}
-    "hasil_rows": [],          # list of dict baris absensi harian
-    "hasil_ringkasan": [],     # list of dict rekap statistik per pegawai
+    "hasil_rows": [],          # list of dict baris absensi harian (gabungan seluruh batch)
+    "hasil_ringkasan": [],     # list of dict rekap statistik per pegawai (gabungan seluruh batch)
     "bidang_override": "",     # nama Bidang manual (opsional) untuk sheet rekap resmi
     "output_path": None,
     "mulai": None,
     "selesai": None,
+    "processed_files": set(),        # nama file yang SUDAH pernah diproses (agar tidak diproses ulang)
+    "file_hash_index": {},           # sha256(isi file) -> nama file pertama yang punya isi itu
+    "content_signature_index": {},   # signature(NIP + rincian harian) -> nama file pertama
 }
 LOCK = threading.Lock()
 
 
 def reset_state():
+    """Reset total: dipakai saat pengguna menekan 'Mulai ulang / unggah batch baru'."""
     with LOCK:
         STATE.update({
             "status": "idle",
@@ -82,7 +89,38 @@ def reset_state():
             "output_path": None,
             "mulai": None,
             "selesai": None,
+            "processed_files": set(),
+            "file_hash_index": {},
+            "content_signature_index": {},
         })
+    # bersihkan folder uploads & output supaya benar-benar mulai dari nol
+    for folder in (UPLOAD_DIR, OUTPUT_DIR):
+        for f in os.listdir(folder):
+            try:
+                os.remove(os.path.join(folder, f))
+            except OSError:
+                pass
+
+
+def _hash_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for potongan in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(potongan)
+    return h.hexdigest()
+
+
+def _signature_pegawai(nip, baris_pegawai):
+    """Tanda tangan isi data harian satu pegawai (dipakai untuk mendeteksi
+    file yang isinya sama meski nama filenya berbeda, mis. hasil ekspor
+    ulang). Diambil dari NIP + kumpulan (tanggal, jam masuk, jam keluar,
+    keterangan) yang diurutkan, supaya tidak terpengaruh urutan baris."""
+    inti = sorted(
+        (b.get("Tanggal", ""), b.get("Jam Masuk", ""), b.get("Jam Keluar", ""), b.get("Keterangan", ""))
+        for b in baris_pegawai
+    )
+    teks = (nip or "") + "|" + "|".join(f"{a},{b},{c},{d}" for a, b, c, d in inti)
+    return hashlib.sha256(teks.encode("utf-8")).hexdigest()
 
 
 @app.route("/")
@@ -92,18 +130,13 @@ def index():
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
-    """Terima banyak file PDF sekaligus (drag-drop atau pilih folder)."""
-    reset_state()
+    """Terima file PDF (drag-drop / pilih file / pilih folder).
+    Bersifat MENAMBAHKAN ke batch yang sedang berjalan - tidak menghapus
+    file yang sebelumnya sudah diunggah/diproses, supaya pengguna bisa
+    menambah file susulan tanpa perlu mulai ulang."""
     files = request.files.getlist("files")
     if not files:
         return jsonify({"ok": False, "pesan": "Tidak ada file yang diterima"}), 400
-
-    # bersihkan folder uploads sebelumnya
-    for f in os.listdir(UPLOAD_DIR):
-        try:
-            os.remove(os.path.join(UPLOAD_DIR, f))
-        except OSError:
-            pass
 
     disimpan = []
     for f in files:
@@ -111,7 +144,9 @@ def upload():
             continue
         nama_aman = os.path.basename(f.filename)
         tujuan = os.path.join(UPLOAD_DIR, nama_aman)
-        # hindari nama file bentrok
+        # hindari nama file bentrok (mis. file dengan nama sama diunggah lagi
+        # di batch berikutnya) - disimpan dengan akhiran angka, dan akan
+        # terdeteksi sebagai duplikat isi saat diproses jika memang sama persis
         i = 1
         base, ext = os.path.splitext(tujuan)
         while os.path.exists(tujuan):
@@ -121,37 +156,104 @@ def upload():
         disimpan.append(os.path.basename(tujuan))
 
     with LOCK:
-        STATE["total_file"] = len(disimpan)
+        total_sekarang = len([f for f in os.listdir(UPLOAD_DIR) if f.lower().endswith(".pdf")])
+        STATE["total_file"] = total_sekarang
+        if STATE["status"] == "done":
+            STATE["status"] = "idle"  # ada file baru menunggu diproses
 
-    return jsonify({"ok": True, "jumlah": len(disimpan), "files": disimpan})
+    return jsonify({"ok": True, "jumlah": len(disimpan), "files": disimpan, "total_file": total_sekarang})
 
 
 def _proses_job():
     with LOCK:
         STATE["status"] = "processing"
-        STATE["mulai"] = datetime.now().strftime("%H:%M:%S")
+        if not STATE["mulai"]:
+            STATE["mulai"] = datetime.now().strftime("%H:%M:%S")
 
-    daftar_file = sorted(os.listdir(UPLOAD_DIR))
+    daftar_file = sorted(f for f in os.listdir(UPLOAD_DIR) if f.lower().endswith(".pdf"))
+
     for nama_file in daftar_file:
-        if not nama_file.lower().endswith(".pdf"):
-            continue
+        with LOCK:
+            if nama_file in STATE["processed_files"]:
+                continue  # sudah diproses pada batch sebelumnya, lewati
+            STATE["processed_files"].add(nama_file)
+
         path = os.path.join(UPLOAD_DIR, nama_file)
-        rows, ringkasan, error = ekstrak_pdf(path, nama_file)
+
+        # --- Lapis 1: deteksi file dengan ISI PERSIS SAMA (hash) ---
+        try:
+            file_hash = _hash_file(path)
+        except OSError as e:
+            with LOCK:
+                STATE["diproses"] += 1
+                STATE["gagal"] += 1
+                STATE["log"].append({"file": nama_file, "pesan": f"Tidak bisa membaca file: {e}"})
+            continue
 
         with LOCK:
             STATE["diproses"] += 1
-            if rows:
-                STATE["hasil_rows"].extend(rows)
-            if ringkasan:
-                STATE["hasil_ringkasan"].extend(ringkasan)
+            file_kembar = STATE["file_hash_index"].get(file_hash)
+            if file_kembar:
+                STATE["gagal"] += 1
+                STATE["log"].append({
+                    "file": nama_file,
+                    "pesan": (
+                        f"File duplikat - isi file ini persis sama dengan file yang sudah "
+                        f"diunggah sebelumnya ('{file_kembar}'). Dilewati agar tidak dobel di rekap."
+                    ),
+                })
+                continue
+            STATE["file_hash_index"][file_hash] = nama_file
+
+        # --- Ekstraksi ---
+        rows, ringkasan, error = ekstrak_pdf(path, nama_file)
+
+        with LOCK:
             if error:
                 STATE["gagal"] += 1
                 STATE["log"].append({"file": nama_file, "pesan": error})
-            else:
-                STATE["berhasil"] += 1
+                continue
+
+            # --- Lapis 2: deteksi DATA yang sama (NIP + rincian harian sama),
+            #     berguna kalau file yang sama diekspor ulang dengan nama beda ---
+            ringkasan_baru = []
+            rows_baru = []
+            for r in ringkasan:
+                nip = r.get("NIP", "-")
+                baris_pegawai = [b for b in rows if b.get("NIP") == nip]
+                sig = _signature_pegawai(nip, baris_pegawai)
+                file_kembar_konten = STATE["content_signature_index"].get(sig)
+                if file_kembar_konten:
+                    STATE["log"].append({
+                        "file": nama_file,
+                        "pesan": (
+                            f"Data duplikat - NIP {nip} ({r.get('Nama', '-')}) dengan rincian "
+                            f"dan periode yang sama sudah pernah diproses dari file "
+                            f"'{file_kembar_konten}'. Data pegawai ini dilewati agar tidak "
+                            f"dobel di rekap."
+                        ),
+                    })
+                    continue
+                STATE["content_signature_index"][sig] = nama_file
+                ringkasan_baru.append(r)
+                rows_baru.extend(baris_pegawai)
+
+            if ringkasan and not ringkasan_baru:
+                # seluruh pegawai di file ini ternyata duplikat konten
+                STATE["gagal"] += 1
+                continue
+
+            if ringkasan_baru:
+                STATE["hasil_rows"].extend(rows_baru)
+                STATE["hasil_ringkasan"].extend(ringkasan_baru)
+            elif rows:
+                # kasus jarang: ada baris harian tapi tidak ada ringkasan sama sekali
+                STATE["hasil_rows"].extend(rows)
+
+            STATE["berhasil"] += 1
         time.sleep(0.03)  # jeda kecil agar progress terlihat halus di UI
 
-    # susun file Excel akhir
+    # susun ulang file Excel dari SELURUH data terkumpul sejauh ini (semua batch)
     with LOCK:
         if STATE["hasil_rows"]:
             df = pd.DataFrame(STATE["hasil_rows"])
@@ -206,11 +308,19 @@ def process():
     with LOCK:
         if STATE["status"] == "processing":
             return jsonify({"ok": False, "pesan": "Proses sedang berjalan"}), 409
+        belum_diproses = [
+            f for f in os.listdir(UPLOAD_DIR)
+            if f.lower().endswith(".pdf") and f not in STATE["processed_files"]
+        ]
+        if not belum_diproses:
+            return jsonify({"ok": False, "pesan": "Tidak ada file baru untuk diproses"}), 400
         data = request.get_json(silent=True) or {}
-        STATE["bidang_override"] = (data.get("bidang_override") or "").strip()
+        bidang_baru = (data.get("bidang_override") or "").strip()
+        if bidang_baru:
+            STATE["bidang_override"] = bidang_baru
     t = threading.Thread(target=_proses_job, daemon=True)
     t.start()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "jumlah_baru": len(belum_diproses)})
 
 
 @app.route("/api/status")
@@ -224,7 +334,7 @@ def status():
             "berhasil": STATE["berhasil"],
             "gagal": STATE["gagal"],
             "total_baris": len(STATE["hasil_rows"]),
-            "log": STATE["log"][-20:],
+            "log": STATE["log"][-30:],
             "preview": preview,
             "mulai": STATE["mulai"],
             "selesai": STATE["selesai"],

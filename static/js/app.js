@@ -14,6 +14,7 @@
   const progressWrap = document.getElementById("progressWrap");
   const progressFill = document.getElementById("progressFill");
   const progressLabel = document.getElementById("progressLabel");
+  const tambahFileHint = document.getElementById("tambahFileHint");
 
   const statTotal = document.getElementById("statTotal");
   const statBerhasil = document.getElementById("statBerhasil");
@@ -28,6 +29,7 @@
 
   let filesTerpilih = [];
   let pollTimer = null;
+  let sudahPernahProses = false; // sudah pernah menyelesaikan minimal satu batch?
 
   function setBadge(mode, text) {
     statusBadge.classList.remove("busy", "error");
@@ -83,7 +85,7 @@
     }
   });
 
-  // ---------- Upload lalu proses ----------
+  // ---------- Upload lalu proses (mendukung penambahan file bertahap) ----------
   btnProses.addEventListener("click", async () => {
     if (filesTerpilih.length === 0) return;
     btnProses.disabled = true;
@@ -99,26 +101,43 @@
       if (!data.ok) {
         alert("Gagal mengunggah: " + (data.pesan || "unknown error"));
         btnProses.disabled = false;
-        btnProses.textContent = "Proses Semua File";
+        btnProses.textContent = sudahPernahProses ? "Proses File Baru" : "Proses Semua File";
         setBadge("error", "Gagal unggah");
         return;
       }
-      statTotal.textContent = data.jumlah;
+      statTotal.textContent = data.total_file;
       progressWrap.hidden = false;
-      progressLabel.textContent = `Memproses 0 dari ${data.jumlah} file…`;
+      progressLabel.textContent = `Memproses file baru…`;
       btnProses.textContent = "Memproses…";
+      btnUnduh.hidden = true;
       setBadge("busy", "Memproses file…");
 
-      await fetch("/api/process", {
+      const resProcess = await fetch("/api/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bidang_override: inputBidang.value.trim() }),
       });
+      const dataProcess = await resProcess.json();
+      if (!dataProcess.ok) {
+        alert("Gagal memulai proses: " + (dataProcess.pesan || "unknown error"));
+        btnProses.disabled = false;
+        btnProses.textContent = sudahPernahProses ? "Proses File Baru" : "Proses Semua File";
+        setBadge("error", "Gagal memproses");
+        return;
+      }
+
+      // file yang baru saja dikirim sudah "diserahkan" ke server, siap-siap
+      // untuk seleksi berikutnya begitu batch ini selesai diproses
+      filesTerpilih = [];
+      fileInput.value = "";
+      folderInput.value = "";
+      renderFileList();
+
       mulaiPolling();
     } catch (err) {
       alert("Terjadi kesalahan jaringan lokal: " + err);
       btnProses.disabled = false;
-      btnProses.textContent = "Proses Semua File";
+      btnProses.textContent = sudahPernahProses ? "Proses File Baru" : "Proses Semua File";
       setBadge("error", "Terjadi kesalahan");
     }
   });
@@ -166,17 +185,23 @@
 
       const pct = s.total_file ? Math.round((s.diproses / s.total_file) * 100) : 0;
       progressFill.style.width = pct + "%";
-      progressLabel.textContent = `Memproses ${s.diproses} dari ${s.total_file} file… (${pct}%)`;
+      progressLabel.textContent = `Memproses ${s.diproses} dari ${s.total_file} file (kumulatif)… (${pct}%)`;
 
       renderPreview(s.preview);
       renderLog(s.log);
 
       if (s.status === "done") {
         clearInterval(pollTimer);
-        progressLabel.textContent = `Selesai — ${s.berhasil} berhasil, ${s.gagal} perlu dicek ulang.`;
-        btnProses.hidden = true;
+        sudahPernahProses = true;
+        progressLabel.textContent = `Selesai — ${s.berhasil} berhasil, ${s.gagal} bermasalah/duplikat dari total ${s.total_file} file.`;
+
+        // JANGAN sembunyikan tombol proses secara permanen - biarkan pengguna
+        // bisa menambah file susulan kapan saja tanpa perlu mulai ulang.
+        btnProses.disabled = true; // nonaktif sampai ada file baru dipilih lagi
+        btnProses.textContent = "Proses File Baru";
         if (s.siap_unduh) btnUnduh.hidden = false;
         btnReset.hidden = false;
+        if (tambahFileHint) tambahFileHint.hidden = false;
         setBadge(s.gagal > 0 ? "error" : null, s.gagal > 0 ? "Selesai dengan catatan" : "Selesai");
       }
     }, 700);
@@ -198,11 +223,13 @@
     statBaris.textContent = "0";
     progressWrap.hidden = true;
     progressFill.style.width = "0%";
+    sudahPernahProses = false;
     btnProses.hidden = false;
     btnProses.disabled = true;
     btnProses.textContent = "Proses Semua File";
     btnUnduh.hidden = true;
     btnReset.hidden = true;
+    if (tambahFileHint) tambahFileHint.hidden = true;
     dataTableBody.innerHTML = '<tr class="empty-row"><td colspan="9">Belum ada data. Unggah file PDF untuk memulai.</td></tr>';
     logList.innerHTML = '<li class="log-empty">Tidak ada catatan kesalahan.</li>';
     inputBidang.value = "";
