@@ -115,7 +115,139 @@ VS Code dan tekan `Ctrl+C`.
 
 ---
 
-## 7. PENTING — Menyesuaikan pembacaan PDF dengan format ASLI
+## 7. Memasang logo resmi Kejaksaan
+
+Header aplikasi sudah disiapkan menampilkan logo secara statis (tidak
+berputar/bergerak). Untuk memasangnya:
+
+1. Siapkan file logo resmi (format **PNG dengan latar belakang transparan**
+   akan tampil paling rapi di atas warna hijau header). Ukuran persegi,
+   minimal 200x200 px, cukup ideal.
+2. Beri nama file tersebut persis: **`logo-kejaksaan.png`**
+3. Salin/taruh file itu ke folder:
+   ```
+   absensi-web/static/img/logo-kejaksaan.png
+   ```
+4. Simpan, lalu refresh browser (`http://127.0.0.1:5000`) — logo akan
+   otomatis tampil menggantikan tempat kosong tersebut, ukurannya sudah
+   otomatis menyesuaikan (72x72 px) dan tidak ada animasi apa pun.
+
+Kalau nanti ingin ukuran tampilnya diperbesar/diperkecil, bisa disesuaikan
+lewat `static/css/style.css`, cari bagian:
+```css
+.seal{
+  width: 72px;
+  height: 72px;
+}
+```
+tinggal ubah angka `72px` sesuai kebutuhan.
+
+---
+
+## 8. Status Kalibrasi — SUDAH SESUAI FORMAT ASLI ✅
+
+Modul `extractor.py` sudah dikalibrasi langsung berdasarkan contoh PDF
+**asli** "LAPORAN KEHADIRAN PEGAWAI" dari Kejaksaan Tinggi Jawa Tengah,
+dan sudah diuji berhasil membaca dengan akurat, termasuk:
+
+- Identitas pegawai: Nama, NIP, NRP, Golongan, Sub Unit Kerja, Jabatan
+- Data harian: Tanggal, Jadwal Masuk/Pulang, Jam Masuk/Keluar aktual,
+  Datang Awal/Telat, Pulang Awal/Telat, Jumlah Jam Kerja, Keterangan (WFO/dsb)
+- Hari libur/akhir pekan otomatis diberi label **"Libur"**
+- **Ringkasan statistik per pegawai** (Terlambat, Alpha, Sakit, Izin,
+  Dinas Luar, Cuti, Total Hari Kerja, dst) — diambil otomatis dari blok
+  rekap di bagian akhir laporan, dan disusun sebagai **sheet Excel
+  terpisah** ("Ringkasan Kehadiran"), selain sheet data harian
+  ("Rekap Absensi Harian").
+
+Artinya file Excel hasil rekap sekarang berisi **dua sheet**:
+1. `Rekap Absensi Harian` — satu baris per tanggal per pegawai
+2. `Ringkasan Kehadiran` — satu baris per pegawai, rekap total statistiknya
+
+Jika suatu saat ternyata ada pegawai/unit dengan format tabel yang sedikit
+berbeda (misal ada kolom tambahan), akan otomatis masuk ke Log Kesalahan
+dengan pesan yang jelas, tanpa menghentikan proses file lainnya — tinggal
+dikirimkan contohnya untuk disesuaikan lebih lanjut.
+
+---
+
+## 9. Sheet Rekap Resmi (Format Persis Dokumen Instansi)
+
+Selain sheet `Rekap Absensi Harian` dan `Ringkasan Kehadiran`, file Excel
+hasil menyertakan **sheet tambahan** dengan format PERSIS seperti dokumen
+resmi instansi (contoh acuan: "Rekapitulasi Absensi Digital Kejaksaan
+Tinggi Jawa Tengah").
+
+Di halaman utama aplikasi ada kolom **"Nama Bidang untuk batch ini
+(opsional)"**. Ini mengikuti cara kerja kantor yang biasanya memproses
+absensi per Bidang sekaligus (satu batch unggah = satu Bidang):
+
+- **Kalau diisi** (mis. `PIDMIL`): seluruh pegawai di batch itu akan
+  diberi nilai Bidang tersebut di kolom "Bidang", dan sheet-nya otomatis
+  diberi nama sesuai Bidang itu (mis. sheet **"Pidmil"**) - persis seperti
+  kebiasaan satu sheet per Bidang di dokumen asli.
+- **Kalau dikosongkan**: kolom "Bidang" dibiarkan kosong untuk semua
+  pegawai, dan sheet-nya diberi nama umum **"Rekapitulasi Absensi"**.
+  Dipakai kalau file yang diunggah memang berasal dari beberapa Bidang
+  berbeda sekaligus dalam satu batch.
+
+Sheet ini juga mempertahankan semua penyesuaian sebelumnya:
+
+- Kolom **"Cuti" menampilkan rincian jenis cuti** (mis. `CUTI ALASAN
+  PENTING : 5 Hari, CUTI BESAR : 3 Hari, CUTI PENANGGUHAN TAHUN LALU : 3
+  Hari`), diambil otomatis dari baris statistik tambahan di PDF sumber -
+  sistem mengenali pola apa pun berbentuk `"LABEL : angka Hari"`, jadi
+  jenis cuti apa pun otomatis tertangkap tanpa perlu didaftarkan manual.
+- Judul, periode, jumlah hari kerja, header tabel, font, lebar kolom,
+  garis tabel, dan aturan "sel dikosongkan jika nilai 0" disamakan
+  dengan dokumen acuan.
+
+**Catatan:** karena contoh PDF yang saya terima kebetulan tidak punya
+data cuti (Total Cuti = 0 Hari), fitur rincian cuti sudah diuji dengan
+data simulasi dan terbukti bekerja sesuai pola yang diminta, tapi belum
+diuji dengan PDF asli yang benar-benar memiliki rincian cuti. Kalau nanti
+ditemukan pola yang sedikit berbeda dari dugaan, kabari saya dengan
+contoh PDF-nya.
+
+---
+
+## 10. Unggah Bertahap & Deteksi Duplikat
+
+Dua penyempurnaan tambahan supaya lebih tahan-banting dipakai untuk
+volume besar (mis. 380 file bertahap dari beberapa pembina/waktu):
+
+**Unggah bertahap (tidak perlu mulai ulang).** Kalau ada file susulan
+yang ketinggalan, tinggal pilih/tarik file baru itu lagi kapan pun -
+baik sebelum maupun SETELAH batch sebelumnya selesai diproses. Klik
+"Proses File Baru" untuk memproses hanya file yang baru ditambahkan;
+hasil dari batch-batch sebelumnya tetap tersimpan dan digabung otomatis
+ke rekap yang sama. Tombol "Mulai ulang / unggah batch baru" tetap ada
+kalau memang ingin benar-benar mulai dari nol.
+
+**Deteksi file duplikat.** Kalau file yang sama tidak sengaja terunggah
+lagi, sistem otomatis mendeteksinya lewat dua cara sekaligus, supaya
+tidak dobel di rekap:
+1. **Isi file persis sama** (dibandingkan lewat hash isi file) - menangkap
+   kasus file yang sama betul-betul diunggah dua kali, walau namanya
+   diganti.
+2. **Data sama walau file beda** (dibandingkan lewat NIP + rincian
+   tanggal/jam/keterangan harian) - menangkap kasus file diekspor ulang
+   dari sistem sumber (nama file & metadata beda, tapi isinya sama).
+
+File yang terdeteksi duplikat otomatis masuk ke **"Log Berkas
+Bermasalah"** dengan keterangan file mana yang jadi acuan duplikatnya,
+dan tidak ikut dihitung dua kali di rekap Excel maupun sheet resmi.
+Sheet "Log Kesalahan" di file Excel hasil juga mencatat hal yang sama.
+
+Untuk mencoba fitur ini tanpa menunggu kasus nyata, `generate_sample_pdfs.py`
+sudah menyertakan satu file contoh duplikat bernama
+`absensi_001_BUDI_SANTOSO_EKSPOR_ULANG.pdf` - coba unggah file itu
+bersamaan dengan `absensi_001_BUDI_SANTOSO.pdf` untuk melihat cara
+kerjanya langsung.
+
+---
+
+## 11. PENTING — Jika nanti ditemukan format yang sedikit berbeda
 
 Karena contoh format PDF absensi asli dari kantor belum tersedia saat
 proyek ini dibuat, logika pembacaan PDF (`extractor.py`) ditulis secara
@@ -142,7 +274,7 @@ disesuaikan polanya.
 
 ---
 
-## 8. Struktur proyek
+## 12. Struktur proyek
 
 ```
 absensi-web/
@@ -162,7 +294,7 @@ absensi-web/
 
 ---
 
-## 9. Rencana pengembangan lanjutan (setelah versi web lokal ini stabil)
+## 13. Rencana pengembangan lanjutan (setelah versi web lokal ini stabil)
 
 Sesuai diskusi sebelumnya, setelah versi web ini terbukti bekerja dengan
 baik terhadap data asli, langkah selanjutnya sesuai proposal adalah
@@ -170,6 +302,26 @@ membungkusnya menjadi **aplikasi desktop mandiri** (file yang bisa
 langsung dijalankan tanpa perlu membuka terminal/VS Code), menggunakan
 `pyinstaller`, supaya staf non-teknis di bidang Daskrimti bisa memakainya
 dengan sekali klik setiap bulan.
+
+---
+
+## 14. Batas ukuran total unggahan
+
+Secara default aplikasi mengizinkan total unggahan sekaligus sampai
+**2 GB** (cukup luas untuk ~380 file PDF, bahkan jika sebagian besar
+ukurannya). Kalau suatu saat ternyata masih kurang atau ingin diperkecil,
+ubah angka ini di `app.py`:
+
+```python
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024 * 1024  # ganti angkanya di sini
+```
+
+Jika total unggahan melebihi batas, aplikasi akan menampilkan pesan error
+yang jelas di layar (bukan halaman error mentah), dan kalian bisa coba
+unggah dalam beberapa kelompok/batch yang lebih kecil sebagai alternatif
+(misalnya 100 file dulu, unduh hasil rekapnya, lalu 100 file berikutnya,
+dan digabung manual di Excel di akhir — atau beri tahu saya kalau mau
+dibuatkan fitur "gabung otomatis antar batch").
 
 ---
 
