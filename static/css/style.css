@@ -196,22 +196,99 @@ body{
 .dropzone__buttons{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
 
 .filelist{ margin-top:16px; }
-.filelist__count{ font-size:13px; font-weight:600; color:var(--color-primary-dark); margin:0 0 8px; }
+.filelist__head{
+  display:flex; align-items:center; justify-content:space-between;
+  margin:0 0 8px;
+}
+.filelist__count{ font-size:13px; font-weight:600; color:var(--color-primary-dark); margin:0; }
+.filelist__clear{
+  background:none; border:none; cursor:pointer;
+  font-size:11.5px; color:var(--color-text-muted); text-decoration:underline;
+  padding:0;
+}
+.filelist__clear:hover{ color: var(--color-danger); }
 .filelist__ul{
   list-style:none; margin:0; padding:0;
-  max-height:150px; overflow-y:auto;
+  max-height:170px; overflow-y:auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
 .filelist__ul li{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
   font-family: var(--font-mono);
   font-size: 11.5px;
-  padding: 6px 10px;
+  padding: 6px 6px 6px 10px;
   border-bottom: 1px solid var(--color-border);
   color: var(--color-text-muted);
-  white-space: nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .filelist__ul li:last-child{ border-bottom:none; }
+.filelist__ul li .nama-file{
+  white-space: nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.filelist__ul li .btn-hapus-file{
+  flex-shrink:0;
+  width:20px; height:20px;
+  display:flex; align-items:center; justify-content:center;
+  border:none; background:transparent; cursor:pointer;
+  color: var(--color-text-muted);
+  border-radius:50%;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1;
+}
+.filelist__ul li .btn-hapus-file:hover{
+  background: var(--color-danger-tint);
+  color: var(--color-danger);
+}
+
+/* ---------------- PILIHAN BATCH (gabung vs baru) ---------------- */
+.pilihan-batch{
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--color-gold);
+  background: var(--color-gold-tint);
+  border-radius: var(--radius-sm);
+}
+.pilihan-batch__judul{
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #7A5E2C;
+  margin: 0 0 10px;
+}
+.pilihan-batch .btn{ margin-top: 8px; font-size: 12.5px; text-align:left; }
+.pilihan-batch .btn:first-of-type{ margin-top: 0; }
+
+/* ---------------- RIWAYAT BATCH ---------------- */
+.riwayat-list{ list-style:none; margin:0; padding:0; }
+.riwayat-list li{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+.riwayat-list .riwayat-info{ color: var(--color-text); }
+.riwayat-list .riwayat-info b{ color: var(--color-primary-dark); }
+.riwayat-list .riwayat-meta{
+  display:block; font-size:11px; color: var(--color-text-muted); margin-top:2px;
+}
+.riwayat-list .btn-unduh-riwayat{
+  flex-shrink:0;
+  font-size: 11.5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-gold);
+  background: var(--color-gold-tint);
+  color: #7A5E2C;
+  cursor: pointer;
+  font-weight: 600;
+}
+.riwayat-list .btn-unduh-riwayat:hover{ background:#EBDBBB; }
+.riwayat-empty{
+  font-size: 12.5px; color: var(--color-text-muted); font-style: italic;
+  padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+}
 
 /* ---------------- INPUT BIDANG ---------------- */
 .bidang-field{ margin-top: 16px; }

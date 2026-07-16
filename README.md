@@ -211,43 +211,88 @@ contoh PDF-nya.
 
 ---
 
-## 10. Unggah Bertahap & Deteksi Duplikat
+## 10. Unggah Bertahap, Batalkan File, Deteksi Duplikat, & Riwayat Batch
 
-Dua penyempurnaan tambahan supaya lebih tahan-banting dipakai untuk
-volume besar (mis. 380 file bertahap dari beberapa pembina/waktu):
+Beberapa penyempurnaan untuk penggunaan volume besar dan berulang:
 
-**Unggah bertahap (tidak perlu mulai ulang).** Kalau ada file susulan
-yang ketinggalan, tinggal pilih/tarik file baru itu lagi kapan pun -
-baik sebelum maupun SETELAH batch sebelumnya selesai diproses. Klik
-"Proses File Baru" untuk memproses hanya file yang baru ditambahkan;
-hasil dari batch-batch sebelumnya tetap tersimpan dan digabung otomatis
-ke rekap yang sama. Tombol "Mulai ulang / unggah batch baru" tetap ada
-kalau memang ingin benar-benar mulai dari nol.
+**Batalkan file sebelum diproses.** Tiap file yang sudah dipilih (sebelum
+diklik proses) punya tombol "&times;" di sebelah namanya untuk membatalkan
+satu file, atau tombol "Kosongkan semua" untuk membatalkan semuanya
+sekaligus. Berguna kalau salah pilih/tarik file.
 
-**Deteksi file duplikat.** Kalau file yang sama tidak sengaja terunggah
-lagi, sistem otomatis mendeteksinya lewat dua cara sekaligus, supaya
-tidak dobel di rekap:
-1. **Isi file persis sama** (dibandingkan lewat hash isi file) - menangkap
-   kasus file yang sama betul-betul diunggah dua kali, walau namanya
-   diganti.
-2. **Data sama walau file beda** (dibandingkan lewat NIP + rincian
-   tanggal/jam/keterangan harian) - menangkap kasus file diekspor ulang
-   dari sistem sumber (nama file & metadata beda, tapi isinya sama).
+**Dua pilihan saat menambahkan file susulan.** Begitu ada batch yang
+sudah selesai diproses, dan kalian menambahkan file lagi, aplikasi akan
+menanyakan:
+- **"Gabungkan dengan batch sebelumnya"** &rarr; file baru ditambahkan ke
+  batch yang sama, hasilnya tetap satu file Excel gabungan.
+- **"Buat batch baru terpisah"** &rarr; batch yang sedang berjalan
+  ditutup dulu (otomatis masuk ke Riwayat Batch, tetap bisa diunduh),
+  lalu file baru mulai sebagai batch yang benar-benar baru dengan file
+  Excel-nya sendiri.
 
-File yang terdeteksi duplikat otomatis masuk ke **"Log Berkas
-Bermasalah"** dengan keterangan file mana yang jadi acuan duplikatnya,
-dan tidak ikut dihitung dua kali di rekap Excel maupun sheet resmi.
-Sheet "Log Kesalahan" di file Excel hasil juga mencatat hal yang sama.
+**Riwayat Batch Sesi Ini.** Setiap batch yang "ditutup" (baik lewat
+"Buat batch baru terpisah" maupun tombol "Mulai ulang") otomatis tercatat
+di sini lengkap dengan tombol unduh sendiri-sendiri. **Catatan penting:**
+riwayat ini baru tersimpan selama server/aplikasi menyala - begitu
+`python app.py` dihentikan atau komputer di-restart, riwayat ini akan
+hilang (karena belum memakai database, lihat bagian arsitektur di bawah).
 
-Untuk mencoba fitur ini tanpa menunggu kasus nyata, `generate_sample_pdfs.py`
-sudah menyertakan satu file contoh duplikat bernama
-`absensi_001_BUDI_SANTOSO_EKSPOR_ULANG.pdf` - coba unggah file itu
-bersamaan dengan `absensi_001_BUDI_SANTOSO.pdf` untuk melihat cara
-kerjanya langsung.
+**Deteksi file duplikat** (isi file persis sama, atau data sama walau
+file beda) tetap berjalan seperti sebelumnya, masuk ke "Log Berkas
+Bermasalah".
 
 ---
 
-## 11. PENTING — Jika nanti ditemukan format yang sedikit berbeda
+## 11. Rencana Arsitektur Lanjutan: Login, Edit Data, & Dashboard Permanen
+
+Untuk kebutuhan berikut, versi lokal ini **perlu dikembangkan lebih lanjut
+dengan database**, karena sifatnya harus permanen dan multi-pengguna:
+
+- Login untuk 3 pengguna
+- Riwayat batch yang tidak hilang walau aplikasi di-restart
+- Mengedit data yang sudah diekstraksi (mis. keterangan "Alpha" yang
+  seharusnya "Cuti Belajar") sebelum diunduh jadi Excel final
+- Dashboard untuk membuka kembali batch-batch lama kapan saja
+
+**Rencana teknis yang disarankan (pakai Supabase, sesuai usulan kalian):**
+
+| Komponen | Peran |
+|---|---|
+| Supabase Auth | Login 3 pengguna (email + password) |
+| Supabase Postgres | Menyimpan batch, baris absensi harian, dan riwayat perubahan (audit log) |
+| Supabase Storage *(opsional)* | Menyimpan file PDF asli sebagai arsip |
+
+**Rancangan tabel database (garis besar):**
+- `batches` — 1 baris per batch (nama, bidang, periode, status: draft/final, dibuat oleh siapa, waktu)
+- `attendance_records` — 1 baris per tanggal per pegawai (hasil ekstraksi, bisa diedit)
+- `record_edit_log` — mencatat setiap perubahan manual (nilai lama, nilai baru, siapa yang ubah, kapan) - penting untuk jejak audit karena ini dokumen resmi instansi
+- `ringkasan_pegawai` — hasil rekap statistik per pegawai per batch
+
+**Alur kerja barunya nanti:**
+1. Login &rarr; 2. Unggah & proses PDF (seperti sekarang) &rarr; 3. Data
+tersimpan ke database berstatus "draft" &rarr; 4. Buka dashboard,
+telusuri/edit data yang kurang tepat &rarr; 5. Tandai batch "final"
+&rarr; 6. Unduh Excel (format sama seperti sekarang).
+
+**Yang perlu disiapkan dari sisi kalian sebelum tahap ini dikerjakan:**
+1. Buat akun & project di [supabase.com](https://supabase.com) (gratis
+   untuk skala pemakaian 3 user internal).
+2. Setelah project dibuat, kalian akan dapat **Project URL** dan
+   **anon/public API key** dari dashboard Supabase (Settings &rarr; API) -
+   dua hal ini yang nanti dipakai untuk menyambungkan aplikasi.
+3. Beri tahu saya kalau sudah siap, supaya bisa lanjut ke desain skema
+   tabel secara rinci dan integrasi login + dashboard edit-nya.
+
+**Soal hosting:** sesuai urutan yang kalian sebutkan juga - selesaikan
+dan uji dulu semua fitur (termasuk integrasi Supabase) secara lokal di
+VS Code, baru di-hosting supaya bisa diakses tanpa membuka VS Code setiap
+kali. Untuk hosting nanti ada beberapa opsi umum (Railway, Render,
+VPS kantor/instansi kalau ada) - bisa dibahas lebih lanjut begitu
+tahap integrasi selesai.
+
+---
+
+## 12. PENTING — Jika nanti ditemukan format yang sedikit berbeda
 
 Karena contoh format PDF absensi asli dari kantor belum tersedia saat
 proyek ini dibuat, logika pembacaan PDF (`extractor.py`) ditulis secara
@@ -274,7 +319,7 @@ disesuaikan polanya.
 
 ---
 
-## 12. Struktur proyek
+## 13. Struktur proyek
 
 ```
 absensi-web/
@@ -294,7 +339,7 @@ absensi-web/
 
 ---
 
-## 13. Rencana pengembangan lanjutan (setelah versi web lokal ini stabil)
+## 14. Rencana Pengembangan Desktop App (opsional, terpisah dari rencana Supabase)
 
 Sesuai diskusi sebelumnya, setelah versi web ini terbukti bekerja dengan
 baik terhadap data asli, langkah selanjutnya sesuai proposal adalah
@@ -305,7 +350,7 @@ dengan sekali klik setiap bulan.
 
 ---
 
-## 14. Batas ukuran total unggahan
+## 15. Batas ukuran total unggahan
 
 Secara default aplikasi mengizinkan total unggahan sekaligus sampai
 **2 GB** (cukup luas untuk ~380 file PDF, bahkan jika sebagian besar

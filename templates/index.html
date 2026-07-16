@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sistem Rekapitulasi Absensi - Daskrimti Kejati Jateng</title>
+<title>Sistem Rekapitulasi Absensi — Daskrimti Kejati Jateng</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -18,7 +18,7 @@
     </div>
     <div class="topbar__text">
       <p class="eyebrow">Kejaksaan Tinggi Jawa Tengah &mdash; Bidang Daskrimti</p>
-      <h1>Sistem Rekapitulasi Absensi</h1>
+      <h1>Sistem Rekapitulasi Absensi Otomatis</h1>
       <p class="topbar__sub">Diproses dan disimpan sepenuhnya di perangkat ini &mdash; tidak ada data yang dikirim ke luar.</p>
     </div>
     <div class="topbar__badge" id="statusBadge">
@@ -59,7 +59,7 @@
         <div class="dropzone__icon">
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
-        <p class="dropzone__title">Tarik &amp; drop file PDF di sini</p>
+        <p class="dropzone__title">Tarik &amp; letakkan file PDF di sini</p>
         <p class="dropzone__sub">atau pilih file / folder secara manual</p>
         <div class="dropzone__buttons">
           <button type="button" class="btn btn--ghost" id="btnPilihFile">Pilih File PDF</button>
@@ -69,22 +69,26 @@
       </div>
 
       <div class="filelist" id="fileListWrap" hidden>
-        <p class="filelist__count"><span id="fileCount">0</span> file PDF siap diproses</p>
+        <div class="filelist__head">
+          <p class="filelist__count"><span id="fileCount">0</span> file PDF siap diproses</p>
+          <button type="button" class="filelist__clear" id="btnKosongkanSemua">Kosongkan semua</button>
+        </div>
         <ul class="filelist__ul" id="fileListUl"></ul>
       </div>
 
       <div class="bidang-field">
         <label for="inputBidang">Nama Bidang untuk batch ini <span class="opsional">(opsional)</span></label>
-        <input type="text" id="inputBidang" placeholder="Contoh. PIDMIL, PIDUM, DATUN" autocomplete="off">
+        <input type="text" id="inputBidang" placeholder="Kosongkan untuk deteksi campuran, atau isi mis. PIDMIL, PIDUM, DATUN" autocomplete="off">
         <p class="bidang-field__hint">
-          Jika diisi, seluruh pegawai di batch ini akan dikelompokkan ke satu sheet
-          dengan nama Bidang tersebut pada rekap resmi. Kosongkan hanya jika file yang diunggah memang
+          Kalau diisi, seluruh pegawai di batch ini akan dikelompokkan ke satu sheet
+          dengan nama Bidang tersebut pada rekap resmi — sesuai cara kerja kantor
+          yang memproses per Bidang. Kosongkan hanya jika file yang diunggah memang
           berasal dari beberapa Bidang berbeda sekaligus.
         </p>
       </div>
 
       <button type="button" class="btn btn--primary btn--block" id="btnProses" disabled>
-        Proses File
+        Proses Semua File
       </button>
 
       <div class="progress" id="progressWrap" hidden>
@@ -95,9 +99,19 @@
       <button type="button" class="btn btn--outline btn--block" id="btnUnduh" hidden>
         Unduh Rekap Excel (.xlsx)
       </button>
+
+      <div class="pilihan-batch" id="pilihanBatch" hidden>
+        <p class="pilihan-batch__judul">Ada batch yang sudah selesai diproses. File baru ini mau diapakan?</p>
+        <button type="button" class="btn btn--ghost btn--block" id="btnPilihGabung">
+          Gabungkan dengan batch sebelumnya (1 file Excel yang sama)
+        </button>
+        <button type="button" class="btn btn--ghost btn--block" id="btnPilihBatchBaru">
+          Buat batch baru terpisah (file Excel baru, batch lama tetap tersimpan)
+        </button>
+      </div>
+
       <p class="tambah-file-hint" id="tambahFileHint" hidden>
-        Ada file susulan? Pilih/tarik file lagi di atas, lalu klik "Proses File Baru" -
-        hasil sebelumnya tidak akan hilang, tinggal digabung.
+        Ada file susulan? Pilih/tarik file lagi di atas kapan saja.
       </p>
       <button type="button" class="btn btn--text btn--block" id="btnReset" hidden>
         Mulai ulang / unggah batch baru
@@ -124,6 +138,15 @@
       <h2 class="panel__title panel__title--log"><span class="panel__index">03</span>Log Berkas Bermasalah</h2>
       <ul class="log-list" id="logList">
         <li class="log-empty">Tidak ada catatan kesalahan.</li>
+      </ul>
+
+      <h2 class="panel__title panel__title--log"><span class="panel__index">04</span>Riwayat Batch Sesi Ini</h2>
+      <p class="table-note" style="margin-top:-6px;">
+        Riwayat ini hanya tersimpan selama server berjalan (belum permanen).
+        Kalau server di-restart, riwayat ini akan hilang.
+      </p>
+      <ul class="riwayat-list" id="riwayatList">
+        <li class="riwayat-empty">Belum ada batch yang selesai diproses.</li>
       </ul>
     </section>
 

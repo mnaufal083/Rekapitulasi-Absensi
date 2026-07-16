@@ -69,13 +69,37 @@ STATE = {
     "processed_files": set(),        # nama file yang SUDAH pernah diproses (agar tidak diproses ulang)
     "file_hash_index": {},           # sha256(isi file) -> nama file pertama yang punya isi itu
     "content_signature_index": {},   # signature(NIP + rincian harian) -> nama file pertama
+    "riwayat_batch": [],             # riwayat semua batch yang pernah selesai diproses di sesi
+                                      # server ini (TIDAK ikut terhapus saat "Mulai ulang", supaya
+                                      # batch lama tetap bisa diunduh meski sudah pindah ke batch baru)
 }
 LOCK = threading.Lock()
 
 
+def _catat_ke_riwayat_jika_ada():
+    """Simpan batch yang sedang berjalan ke riwayat (kalau memang sudah
+    menghasilkan file Excel), dipanggil sebelum batch itu 'ditutup' -
+    baik karena pengguna reset total maupun memilih 'buat batch baru
+    terpisah'. Supaya file lama tetap bisa diunduh lewat riwayat."""
+    if STATE["output_path"] and os.path.exists(STATE["output_path"]):
+        STATE["riwayat_batch"].append({
+            "nama_file": os.path.basename(STATE["output_path"]),
+            "waktu": STATE["selesai"] or datetime.now().strftime("%H:%M:%S"),
+            "jumlah_pegawai": len(STATE["hasil_ringkasan"]),
+            "jumlah_baris": len(STATE["hasil_rows"]),
+            "berhasil": STATE["berhasil"],
+            "gagal": STATE["gagal"],
+            "bidang": STATE.get("bidang_override") or "-",
+        })
+
+
 def reset_state():
-    """Reset total: dipakai saat pengguna menekan 'Mulai ulang / unggah batch baru'."""
+    """Reset total: dipakai saat pengguna menekan 'Mulai ulang / unggah batch baru'
+    ATAU saat memilih 'Buat batch baru terpisah' ketika menambah file susulan.
+    Batch yang sedang berjalan (jika ada hasilnya) dicatat dulu ke riwayat
+    sebelum dihapus, supaya tetap bisa diunduh belakangan."""
     with LOCK:
+        _catat_ke_riwayat_jika_ada()
         STATE.update({
             "status": "idle",
             "total_file": 0,
@@ -93,13 +117,14 @@ def reset_state():
             "file_hash_index": {},
             "content_signature_index": {},
         })
-    # bersihkan folder uploads & output supaya benar-benar mulai dari nol
-    for folder in (UPLOAD_DIR, OUTPUT_DIR):
-        for f in os.listdir(folder):
-            try:
-                os.remove(os.path.join(folder, f))
-            except OSError:
-                pass
+    # bersihkan folder uploads saja (file PDF sumber sudah tidak perlu lagi
+    # setelah diproses). Folder output/ SENGAJA tidak dihapus supaya file
+    # Excel dari batch-batch sebelumnya tetap bisa diunduh lewat riwayat.
+    for f in os.listdir(UPLOAD_DIR):
+        try:
+            os.remove(os.path.join(UPLOAD_DIR, f))
+        except OSError:
+            pass
 
 
 def _hash_file(path):
@@ -267,6 +292,17 @@ def _proses_job():
             nama_output = f"rekap_absensi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             path_output = os.path.join(OUTPUT_DIR, nama_output)
 
+            # hapus file excel PERANTARA dari batch yang sama (kalau ini
+            # bukan file pertama untuk batch ini, mis. akibat "Proses File
+            # Baru" susulan) - supaya tidak menumpuk sampah; file yang sudah
+            # "ditutup" ke riwayat via _catat_ke_riwayat_jika_ada() TIDAK
+            # akan kena karena sudah tidak lagi jadi STATE["output_path"] saat itu
+            if STATE["output_path"] and os.path.exists(STATE["output_path"]):
+                try:
+                    os.remove(STATE["output_path"])
+                except OSError:
+                    pass
+
             with pd.ExcelWriter(path_output, engine="openpyxl") as writer:
                 df.to_excel(writer, index=False, sheet_name="Rekap Absensi Harian")
                 ws = writer.sheets["Rekap Absensi Harian"]
@@ -349,6 +385,22 @@ def download():
     if not path or not os.path.exists(path):
         return jsonify({"ok": False, "pesan": "Belum ada file hasil untuk diunduh"}), 404
     return send_file(path, as_attachment=True, download_name=os.path.basename(path))
+
+
+@app.route("/api/riwayat")
+def riwayat():
+    with LOCK:
+        # terbaru duluan
+        return jsonify({"riwayat": list(reversed(STATE["riwayat_batch"]))})
+
+
+@app.route("/api/download-riwayat/<nama_file>")
+def download_riwayat(nama_file):
+    nama_aman = os.path.basename(nama_file)  # cegah path traversal
+    path = os.path.join(OUTPUT_DIR, nama_aman)
+    if not os.path.exists(path):
+        return jsonify({"ok": False, "pesan": "File riwayat ini sudah tidak ada di server"}), 404
+    return send_file(path, as_attachment=True, download_name=nama_aman)
 
 
 @app.route("/api/reset", methods=["POST"])
